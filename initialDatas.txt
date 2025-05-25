@@ -1,0 +1,27 @@
+# Matriz B (3x3)
+B:
+1 0 0
+0 1 0
+0 0 1
+
+# Nomes da base
+nomes_base:
+s1 s2 s3
+
+# Matriz N (3x2)
+N:
+1 1
+1 0
+0 1
+
+# Nomes das não básicas
+nomes_nao_base:
+x1 x2
+
+# Vetor tb (3x1)
+tb:
+0 0 0
+
+# Vetor cn (1x2)
+cn:
+-2 -1
