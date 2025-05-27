@@ -18,14 +18,14 @@ Min f(x) = -x1 + 2x2
 x1 - x2 <= 2
 x1, x2 >= 0
 
-EX:D ERROR
+EX:D OK
 Max f(x) = x1 + x2
 2x1 + x2 <= 18
 -x1 + 2x2 <= 4
 3x1 - 6x2 >= -12
 x1, x2 >= 0
 
-EX:E ERROR
+EX:E OK
 Max f(x) = 3x1 + 3x2 + 0x3
 x1 + 3x3 <= 5
 x2 <= 5
