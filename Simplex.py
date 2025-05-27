@@ -1,7 +1,7 @@
 import numpy as np
 
 def simplex_fase2(B, N, tb, cn, nomes_base, nomes_nao_base):
-    m, n = B.shape[0], N.shape[1]
+    m = B.shape[0],
     cb = np.zeros(m)
     nomes_todas = nomes_base + nomes_nao_base
     xb = None
