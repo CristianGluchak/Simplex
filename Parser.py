@@ -1,3 +1,4 @@
+# parser.py
 import re
 import numpy as np
 
@@ -21,7 +22,6 @@ def ler_modelo_matematico_txt(path):
     if tipo == "max":
         c = [-ci for ci in c]
 
-
     restricoes = linhas[1:-1]
     A = []
     b = []
@@ -32,6 +32,7 @@ def ler_modelo_matematico_txt(path):
 
     for i, r in enumerate(restricoes):
         coef_linha = [0.0] * len(variaveis)
+        extra_cols = []
 
         if "<=" in r:
             lhs, rhs = r.split("<=")
@@ -63,40 +64,43 @@ def ler_modelo_matematico_txt(path):
             rhs = -rhs
             sinal = {"<=": ">=", ">=": "<="}.get(sinal, sinal)
 
-        extras = [0.0] * len(restricoes)
         linha_idx = len(A)
 
         if sinal == "<=":
-            extras[linha_idx] = 1.0
             nome = f"s{linha_idx+1}"
             nomes_base.append(nome)
             folgas.append(nome)
+            extra_cols = [1.0 if j == linha_idx else 0.0 for j in range(len(restricoes))]
         elif sinal == ">=":
-            extras[linha_idx] = -1.0
             nome_sobra = f"e{linha_idx+1}"
             nome_art = f"a{linha_idx+1}"
             nomes_base.append(nome_art)
             folgas.append(nome_sobra)
             artificiais.append(nome_art)
-            coef_linha += [-1.0] * len(restricoes)
-            extras += [0.0] * len(restricoes)
-            extras[linha_idx] = 1.0
+            excesso_col = [-1.0 if j == linha_idx else 0.0 for j in range(len(restricoes))]
+            artificial_col = [1.0 if j == linha_idx else 0.0 for j in range(len(restricoes))]
+            extra_cols = excesso_col + artificial_col
         elif sinal == "=":
             nome_art = f"a{linha_idx+1}"
             nomes_base.append(nome_art)
             artificiais.append(nome_art)
-            coef_linha += [0.0] * len(restricoes)
-            extras = [0.0] * len(restricoes)
-            extras[linha_idx] = 1.0
+            artificial_col = [1.0 if j == linha_idx else 0.0 for j in range(len(restricoes))]
+            extra_cols = artificial_col
 
-        A.append(coef_linha + extras)
+        A.append(coef_linha + extra_cols)
         b.append(rhs)
 
-    total_vars = len(A[0])
-    c_extendida = c + [0.0] * (total_vars - len(c))
+    # Garante que todas as linhas tenham o mesmo número de colunas
+    max_cols = max(len(row) for row in A)
+    for i in range(len(A)):
+        if len(A[i]) < max_cols:
+            A[i] += [0.0] * (max_cols - len(A[i]))
+
+    A = np.array(A, dtype=float)
+    c_extendida = c + [0.0] * (A.shape[1] - len(c))
 
     return {
-        "A": np.array(A, dtype=float),
+        "A": A,
         "b": np.array(b, dtype=float),
         "c": np.array(c_extendida, dtype=float),
         "nomes_base": nomes_base,
