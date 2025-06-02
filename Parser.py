@@ -3,19 +3,30 @@ import numpy as np
 
 def ler_modelo_matematico_txt(path):
     """
-    Lê um arquivo texto com problema de PL, retorna as estruturas para Simplex.
+    Lê um problema de Programação Linear em formato textual e o transforma em estruturas de dados
+    adequadas para o método Simplex, incluindo:
+        - Matriz de restrições A
+        - Vetor de constantes b
+        - Função objetivo c (convertida para minimização)
+        - Variáveis auxiliares (slack, excess, artificial)
+        - Identificação da base inicial
+        - Mapeamento dos nomes de variáveis (para manter rastreabilidade)
+    
+    A função lida com desigualdades e igualdades, gerando colunas auxiliares para
+    manter a estrutura da matriz aumentada padrão para Simplex.
     """
-
     with open(path, 'r') as f:
         linhas = [linha.strip() for linha in f if linha.strip()]
 
+    # Identifica se o problema é de minimização ou maximização
     tipo_linha = linhas[0].lower()
     tipo = "min" if "min" in tipo_linha else "max"
 
-    # Extrai termos da função objetivo (ex: 2x1, -x2)
+    # Extrai termos da função objetivo (ex: 2x1, -x2, etc)
     obj_expr = re.findall(r'[-+]?\s*\d*\s*x\d+', tipo_linha)
     variaveis = []
     c = []
+
     for termo in obj_expr:
         coef, var = termo.replace(" ", "").split("x")
         coef = coef.replace("+", "")
@@ -25,26 +36,27 @@ def ler_modelo_matematico_txt(path):
             variaveis.append(nome_var)
             c.append(coef)
 
-    # Inverte sinais se for max (para minimizar padrão)
+    # Se for problema de maximização, converte os coeficientes para o padrão de minimização
     if tipo == "max":
         c = [-ci for ci in c]
 
+    # Processa as restrições
     restricoes = linhas[1:-1]
     A = []
     b = []
 
-    folgas = []           # nomes de variáveis de folga (slack)
-    excessos = []         # nomes de variáveis de excesso (surplus)
-    artificiais = []      # nomes das variáveis artificiais
-    nomes_base = []       # nomes das variáveis na base inicial
-    nomes_nao_base = variaveis.copy()  # inicialmente as originais não-base
+    folgas = []           # Variáveis de folga (slack) para <=
+    excessos = []         # Variáveis de excesso (surplus) para >=
+    artificiais = []      # Variáveis artificiais (necessárias para >= ou =)
+    nomes_base = []       # Nomes das variáveis inicialmente na base (normalmente as auxiliares)
+    nomes_nao_base = variaveis.copy()  # x1, x2... inicialmente estão fora da base
 
-    # Variáveis auxiliares (folga, excesso, artificiais) serão adicionadas aqui:
-    aux_vars = []
+    aux_vars = []  # Nome de todas variáveis adicionais a serem adicionadas à matriz A
 
     for i, r in enumerate(restricoes):
         coef_linha = [0.0] * len(variaveis)
 
+        # Identifica o tipo da restrição
         if "<=" in r:
             lhs, rhs = r.split("<=")
             sinal = "<="
@@ -59,6 +71,7 @@ def ler_modelo_matematico_txt(path):
 
         rhs = float(rhs.strip())
 
+        # Coleta os coeficientes da LHS (lado esquerdo)
         termos = re.findall(r'[-+]?\s*\d*\s*x\d+', lhs)
         for termo in termos:
             termo = termo.replace(" ", "")
@@ -70,58 +83,51 @@ def ler_modelo_matematico_txt(path):
             idx = variaveis.index(var)
             coef_linha[idx] = coef
 
-        # Inverte sinais e desigualdades se RHS < 0
+        # Se o lado direito for negativo, inverte a inequação e os coeficientes
         if rhs < 0:
             coef_linha = [-a for a in coef_linha]
             rhs = -rhs
             sinal = {"<=": ">=", ">=": "<="}.get(sinal, sinal)
 
-        # Agora cria colunas auxiliares para essa restrição
+        # Adiciona variáveis auxiliares conforme o tipo da restrição
         row_extra = []
 
         if sinal == "<=":
-            # Folga (+1)
+            # Adiciona variável de folga (slack) com coeficiente +1
             nome_folga = f"s{i+1}"
             folgas.append(nome_folga)
             nomes_base.append(nome_folga)
             aux_vars.append(nome_folga)
-            # coluna com 1 no i-ésimo lugar para folga
             for j in range(len(restricoes)):
                 row_extra.append(1.0 if j == i else 0.0)
 
         elif sinal == ">=":
-            # Excesso (-1) + Artificial (+1)
+            # Adiciona variável de excesso (-1) e artificial (+1)
             nome_excesso = f"e{i+1}"
             nome_artificial = f"a{i+1}"
             excessos.append(nome_excesso)
             artificiais.append(nome_artificial)
-            nomes_base.append(nome_artificial)  # artificial na base inicial
+            nomes_base.append(nome_artificial)
             aux_vars.extend([nome_excesso, nome_artificial])
 
-            # colunas: excesso = -1 no i, artificial = +1 no i
-            excesso_col = []
-            artificial_col = []
-            for j in range(len(restricoes)):
-                excesso_col.append(-1.0 if j == i else 0.0)
-                artificial_col.append(1.0 if j == i else 0.0)
-            row_extra.extend(excesso_col)
-            row_extra.extend(artificial_col)
+            excesso_col = [-1.0 if j == i else 0.0 for j in range(len(restricoes))]
+            artificial_col = [1.0 if j == i else 0.0 for j in range(len(restricoes))]
+            row_extra.extend(excesso_col + artificial_col)
 
         elif sinal == "=":
-            # Artificial (+1)
+            # Adiciona variável artificial (+1)
             nome_artificial = f"a{i+1}"
             artificiais.append(nome_artificial)
             nomes_base.append(nome_artificial)
             aux_vars.append(nome_artificial)
-
             for j in range(len(restricoes)):
                 row_extra.append(1.0 if j == i else 0.0)
 
-        # Adiciona a linha à matriz A
+        # Monta a linha da matriz A
         A.append(coef_linha + row_extra)
         b.append(rhs)
 
-    # Completa com zeros se alguma linha ficou menor que o número máximo de colunas
+    # Garante que todas as linhas tenham o mesmo número de colunas (preenchendo com zeros)
     max_cols = max(len(row) for row in A)
     for i in range(len(A)):
         if len(A[i]) < max_cols:
@@ -130,10 +136,10 @@ def ler_modelo_matematico_txt(path):
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float)
 
-    # Vetor de custos c estendido com zeros para variáveis auxiliares
+    # Extende o vetor de custos c com zeros para todas as variáveis auxiliares
     c_extendida = c + [0.0] * (A.shape[1] - len(c))
 
-    # Agora monta lista completa de nomes de variáveis na ordem das colunas da A
+    # Cria a lista completa de nomes de variáveis na ordem exata das colunas da matriz A
     nomes_variaveis = variaveis + aux_vars
 
     return {
@@ -144,5 +150,5 @@ def ler_modelo_matematico_txt(path):
         "nomes_nao_base": nomes_nao_base,
         "variaveis_artificiais": artificiais,
         "tipo_original": tipo,
-        "nomes_variaveis": nomes_variaveis  # importante para indexação no main.py
+        "nomes_variaveis": nomes_variaveis
     }
